@@ -28,7 +28,7 @@ const TallyTemplates = {
       </BODY>
     </ENVELOPE>`,
 
-  createVoucher: (company, partyName, amount, type = "Receipt") => `
+  createVoucher: (company, partyName, amount, date, type = "Receipt") => `
     <ENVELOPE>
       <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
       <BODY>
@@ -40,7 +40,7 @@ const TallyTemplates = {
           <REQUESTDATA>
             <TALLYMESSAGE xmlns:UDF="TallyUDF">
               <VOUCHER VCHTYPE="${type}" ACTION="Create" OBJVIEW="Accounting Voucher View">
-                <DATE>20250401</DATE>
+                <DATE>${date}</DATE>
                 <NARRATION>API Integrated Transaction</NARRATION>
                 <VOUCHERTYPENAME>${type}</VOUCHERTYPENAME>
                 <PARTYLEDGERNAME>${partyName}</PARTYLEDGERNAME>
@@ -103,8 +103,8 @@ class TallyService {
     return this._checkResponseStatus(response);
   }
 
-  async createReceipt(partyName, amount) {
-    const xml = TallyTemplates.createVoucher(this.company, partyName, amount, "Receipt");
+  async createReceipt(partyName, amount, date) {
+    const xml = TallyTemplates.createVoucher(this.company, partyName, amount, date, "Receipt");
     const response = await this._sendRequest(xml);
     return this._checkResponseStatus(response);
   }
@@ -150,7 +150,7 @@ const startPolling = async () => {
             continue;
         }
 
-        const { partyName, amount } = item.data;
+        const { partyName, amount, date} = item.data;
 
         // 2. Create Ledger (Idempotent)
         console.log(`   -> Checking Ledger: ${partyName}`);
@@ -162,7 +162,7 @@ const startPolling = async () => {
 
         // 3. Create Voucher
         console.log(`   -> Creating Voucher...`);
-        const voucherRes = await tally.createReceipt(partyName, amount);
+        const voucherRes = await tally.createReceipt(partyName, amount, date);
         
         // 4. Update Status
         const status = voucherRes.success ? "SYNCED" : "FAILED";
