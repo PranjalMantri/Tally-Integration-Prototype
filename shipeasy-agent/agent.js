@@ -5,6 +5,7 @@ import config from "./config.js"
 const BACKEND_URL = config.backend_url
 const TALLY_URL = config.tally_url
 const TALLY_COMPANY = config.tally_company
+const TALLY_AGENT_KEY = config.tally_agent_key
 
 // Helper to sanitize XML characters
 const escapeXml = (unsafe) => {
@@ -182,7 +183,9 @@ const startPolling = async () => {
         return;
       }
 
-      const { data: pendingItems } = await axios.get(`${BACKEND_URL}/api/sync/pending`);
+      const { data: pendingItems } = await axios.get(`${BACKEND_URL}/api/sync/pending`, {
+        headers: { 'x-tally-agent-key': TALLY_AGENT_KEY }
+      });
       
       if (!Array.isArray(pendingItems) || pendingItems.length === 0) return;
 
@@ -240,7 +243,7 @@ const startPolling = async () => {
 
     } catch (error) {
       if (error.code !== 'ECONNREFUSED') {
-        console.error("[AGENT] Loop Error:", error.message);
+        console.error("[AGENT] Invalid API Key:", error.message);
       } else {
         // Silent fail on connection refused to avoid console spam if server is down
       }
@@ -254,6 +257,8 @@ async function reportStatus(id, status, message) {
             id, 
             status, 
             tallyResponse: typeof message === 'string' ? message : JSON.stringify(message)
+        }, {
+            headers: { 'x-tally-agent-key': TALLY_AGENT_KEY }
         });
     } catch(e) { 
         console.error("   -> ⚠️ Failed to report status to backend:", e.message); 

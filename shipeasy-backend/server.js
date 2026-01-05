@@ -5,6 +5,7 @@ import {v4 as uuidv4} from "uuid"
 import dotenv from "dotenv"
 import connectDB from "./config/db.js"
 import Invoice from "./models/Invoice.js"
+import User from "./models/User.js"
 dotenv.config({quiet: true})
 
 const PORT = 3000;
@@ -15,6 +16,25 @@ connectDB()
 // Middleware
 app.use(cors()); 
 app.use(express.json());
+
+const authenticateAgent = async (req, res, next) => {
+    const agentKey = req.headers['x-tally-agent-key'];
+    if (!agentKey) {
+        return res.status(401).json({ error: "Unauthorized: Missing Agent Key" });
+    }
+
+    try {
+        const user = await User.findOne({ tallyAgentKey: agentKey });
+        if (!user) {
+            return res.status(403).json({ error: "Forbidden: Invalid Agent Key" });
+        }
+        req.agentUser = user; 
+        next();
+    } catch (error) {
+        console.error("Auth Error:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+};
 
 app.post('/api/invoices', async (req, res) => {
     try {
@@ -40,7 +60,7 @@ app.post('/api/invoices', async (req, res) => {
     }
 });
 
-app.get('/api/sync/pending', async (req, res) => {
+app.get('/api/sync/pending', authenticateAgent, async (req, res) => {
     try {
         const pendingItems = await Invoice.find({ status: 'PENDING' });
         
@@ -76,7 +96,7 @@ app.get('/api/sync/pending', async (req, res) => {
     }
 });
 
-app.post('/api/sync/status', async (req, res) => {
+app.post('/api/sync/status', authenticateAgent, async (req, res) => {
     const { id, status, tallyResponse } = req.body;
 
     try {
