@@ -173,7 +173,7 @@ class TallyService {
 
 const startPolling = async () => {
   const tally = new TallyService(TALLY_URL, TALLY_COMPANY);
-  console.log(`[AGENT] 🚀 Started polling ${BACKEND_URL} every 5 seconds...`);
+  console.log(`[AGENT] 🚀 Started polling ${BACKEND_URL} every ${config.polling_interval / 1000} seconds...`);
 
   setInterval(async () => {
     try {
@@ -248,7 +248,7 @@ const startPolling = async () => {
         // Silent fail on connection refused to avoid console spam if server is down
       }
     }
-  }, 5000);
+  }, config.polling_interval);
 };
 
 async function reportStatus(id, status, message) {
