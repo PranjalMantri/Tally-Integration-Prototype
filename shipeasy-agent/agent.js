@@ -115,6 +115,15 @@ class TallyService {
     this.parser = new xml2js.Parser({ explicitArray: false });
   }
 
+  async isServerRunning() {
+    try {
+      const response = await axios.get(this.tallyUrl, { timeout: 2000 });
+      return typeof response.data === 'string' && response.data.trim() === "<RESPONSE>TallyPrime Server is Running</RESPONSE>";
+    } catch (e) {
+      return false;
+    }
+  }
+
   async _sendRequest(xmlPayload) {
     try {
       const response = await axios.post(this.tallyUrl, xmlPayload, {
@@ -167,6 +176,12 @@ const startPolling = async () => {
 
   setInterval(async () => {
     try {
+      const isTallyRunning = await tally.isServerRunning();
+      if (!isTallyRunning) {
+        console.log("[AGENT] ⚠️ Tally Server is not running or unreachable. Waiting...");
+        return;
+      }
+
       const { data: pendingItems } = await axios.get(`${BACKEND_URL}/api/sync/pending`);
       
       if (!Array.isArray(pendingItems) || pendingItems.length === 0) return;
