@@ -1,9 +1,10 @@
-const axios = require("axios");
-const xml2js = require("xml2js");
+import axios from "axios";
+import xml2js from "xml2js"
+import config from "./config.js"
 
-const BACKEND_URL = "http://localhost:3000";
-const TALLY_URL = "http://localhost:9000";
-const TALLY_COMPANY = "Test Company";
+const BACKEND_URL = config.backend_url
+const TALLY_URL = config.tally_url
+const TALLY_COMPANY = config.tally_company
 
 // Helper to sanitize XML characters
 const escapeXml = (unsafe) => {
