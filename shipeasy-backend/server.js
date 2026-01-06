@@ -8,7 +8,7 @@ import Invoice from "./models/Invoice.js"
 import User from "./models/User.js"
 dotenv.config({quiet: true})
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const app = express();
 
 connectDB()
