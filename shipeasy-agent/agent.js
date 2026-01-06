@@ -79,6 +79,65 @@ const TallyTemplates = {
       </BODY>
     </ENVELOPE>`,
 
+  checkVoucherExists: (company, guid) => `
+    <ENVELOPE>
+    <HEADER>
+      <TALLYREQUEST>Export Data</TALLYREQUEST>
+    </HEADER>
+
+    <BODY>
+      <EXPORTDATA>
+        <REQUESTDESC>
+          <REPORTNAME>VoucherRegister</REPORTNAME>
+          <STATICVARIABLES>
+            <SVCURRENTCOMPANY>${escapeXml(company)}</SVCURRENTCOMPANY>
+            <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+          </STATICVARIABLES>
+        </REQUESTDESC>
+
+        <TDL>
+          <TDLMESSAGE>
+
+            <REPORT NAME="VoucherCheck">
+              <FORMS>VoucherCheckForm</FORMS>
+            </REPORT>
+
+            <FORM NAME="VoucherCheckForm">
+              <PARTS>VoucherCheckPart</PARTS>
+            </FORM>
+
+            <PART NAME="VoucherCheckPart">
+              <LINES>VoucherCheckLine</LINES>
+              <REPEAT>VoucherCheckLine : VoucherCheckCollection</REPEAT>
+              <SCROLLED>Vertical</SCROLLED>
+            </PART>
+
+            <LINE NAME="VoucherCheckLine">
+              <FIELDS>VoucherRemoteID</FIELDS>
+            </LINE>
+
+            <FIELD NAME="VoucherRemoteID">
+              <SET>$RemoteID</SET>
+              <XMLTAG>REMOTEID</XMLTAG>
+            </FIELD>
+
+            <COLLECTION NAME="VoucherCheckCollection">
+              <TYPE>Voucher</TYPE>
+              <FETCH>REMOTEID</FETCH>
+              <FILTER>FilterByRemoteID</FILTER>
+            </COLLECTION>
+
+            <SYSTEM TYPE="Formulae" NAME="FilterByRemoteID">
+              $RemoteID = "${escapeXml(guid)}"
+            </SYSTEM>
+
+          </TDLMESSAGE>
+        </TDL>
+
+        </EXPORTDATA>
+      </BODY>
+    </ENVELOPE>`,
+
   // Complex Sales Voucher (Handles Items + Taxes)
   createSalesVoucher: (company, p) => {
     // 1. Calculate Total Amount (Items + Taxes)
@@ -178,6 +237,26 @@ class TallyService {
     const xml = TallyTemplates.createLedger(this.company, name, group);
     const response = await this._sendRequest(xml);
     return this._checkResponseStatus(response, `Ledger [${name}]`);
+  }
+
+  async checkVoucherExists(guid) {
+    try {
+      const xml = TallyTemplates.checkVoucherExists(this.company, guid);
+      const response = await this._sendRequest(xml);
+      if (!response || !response.ENVELOPE) {
+          console.log("[DEBUG] Invalid or empty response from Tally during check");
+          return false;
+      }
+      
+      const str = JSON.stringify(response);
+      // Log part of the response to see what we got back
+
+      const found = str.includes(`"${guid}"`);
+      return found;
+    } catch (e) {
+      console.error("Error checking voucher existence:", e);
+      return false;
+    }
   }
 
   async createInvoice(payload) {
@@ -286,10 +365,31 @@ const startPolling = async () => {
         await new Promise(r => setTimeout(r, 500)); 
 
         const voucherRes = await tally.createInvoice(rawData);
-        const status = voucherRes.success ? "SUCCESS" : "FAILED";
+        
+        let status = "FAILED";
+        let message = voucherRes.message;
+
+        if (voucherRes.success) {
+             console.log(`   -> Verifying creation for RemoteID: ${rawData.invoiceId}...`);
+             // Wait briefly for Tally to index
+             await new Promise(r => setTimeout(r, 1000));
+             
+             const exists = await tally.checkVoucherExists(rawData.invoiceId);
+             if (exists) {
+                 status = "SUCCESS";
+                 message = "Verified: Created Successfully in Tally";
+             } else {
+                 status = "FAILED";
+                 message = "Verification Failed: Voucher not found in Tally after creation.";
+                 console.error("   -> ❌ Verification Failed");
+                 logOperationalError(`Voucher ${rawData.invoiceNo}`, message);
+             }
+        } else {
+             logOperationalError(`Voucher ${rawData.invoiceNo}`, `Creation Failed: ${message}`);
+        }
 
         console.log(`   -> Result: ${status}`);
-        await reportStatus(item.id, status, voucherRes.message);
+        await reportStatus(item.id, status, message);
       }
 
     } catch (error) {
