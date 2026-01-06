@@ -1,5 +1,5 @@
 {
-    "backend_url": "http://localhost:3000",
+    "backend_url": "https://tally-integration-prototype.onrender.com",
     "tally_url": "http://localhost:9000",
     "tally_company": "Test Company",
     "tally_agent_key": "507068267c2a318c772e5257dcd6cc899bee43c0f358ddf4cc8ec56660011593",
