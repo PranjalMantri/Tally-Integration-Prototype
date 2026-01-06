@@ -87,7 +87,7 @@ const TallyTemplates = {
       </BODY>
     </ENVELOPE>`,
 
-  checkVoucherExists: (company, guid) => `
+  checkVoucherExists: (company, remoteId) => `
     <ENVELOPE>
     <HEADER>
       <TALLYREQUEST>Export Data</TALLYREQUEST>
@@ -136,7 +136,7 @@ const TallyTemplates = {
             </COLLECTION>
 
             <SYSTEM TYPE="Formulae" NAME="FilterByRemoteID">
-              $RemoteID = "${escapeXml(guid)}"
+              $RemoteID = "${escapeXml(remoteId)}"
             </SYSTEM>
 
           </TDLMESSAGE>
@@ -182,7 +182,7 @@ const TallyTemplates = {
           <REQUESTDATA>
             <TALLYMESSAGE xmlns:UDF="TallyUDF">
               <VOUCHER REMOTEID="${escapeXml(p.invoiceId)}" VCHTYPE="Sales" ACTION="Alter">
-                <GUID>${escapeXml(p.invoiceId)}</GUID>
+                <remoteId>${escapeXml(p.invoiceId)}</GUID>
                 <DATE>${p.invoiceDate}</DATE>
                 <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
                 <VOUCHERNUMBER>${escapeXml(p.invoiceNo)}</VOUCHERNUMBER>
@@ -247,9 +247,9 @@ class TallyService {
     return this._checkResponseStatus(response, `Ledger [${name}]`);
   }
 
-  async checkVoucherExists(guid) {
+  async checkVoucherExists(remoteId) {
     try {
-      const xml = TallyTemplates.checkVoucherExists(this.company, guid);
+      const xml = TallyTemplates.checkVoucherExists(this.company, remoteId);
       const response = await this._sendRequest(xml);
       if (!response || !response.ENVELOPE) {
           console.log("[DEBUG] Invalid or empty response from Tally during check");
@@ -259,7 +259,7 @@ class TallyService {
       const str = JSON.stringify(response);
       // Log part of the response to see what we got back
 
-      const found = str.includes(`"${guid}"`);
+      const found = str.includes(`"${remoteId}"`);
       return found;
     } catch (e) {
       console.error("Error checking voucher existence:", e);
