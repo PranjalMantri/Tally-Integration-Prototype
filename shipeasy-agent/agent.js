@@ -1,9 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 
+// Determine the root directory (handles both Node.js and pkg executable)
+const appDir = typeof process.pkg !== 'undefined' ? path.dirname(process.execPath) : __dirname;
+
 // 1. Setup logging immediately to catch startup errors
 function logErrorToFile(error, context = "CRITICAL ERROR") {
-    const logPath = path.join(process.cwd(), 'error_log.txt');
+    const logPath = path.join(appDir, 'error_log.txt');
     const timestamp = new Date().toISOString();
     const errorMessage = `\n[${timestamp}] ${context}:\n${error.stack || error}\n--------------------------\n`;
     
