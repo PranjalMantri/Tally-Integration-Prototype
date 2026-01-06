@@ -3,15 +3,15 @@
   "version": "1.0.0",
   "description": "",
   "main": "agent.js",
+  "bin": "agent.js",
   "scripts": {
-    "dev": "node agent.js"
+    "dev": "node agent.js",
+    "build": "pkg . --targets node18-win-x64 --output shipeasy-agent.exe"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "dependencies": {
-    "axios": "^1.13.2",
     "xml2js": "^0.6.2"
   }
 }

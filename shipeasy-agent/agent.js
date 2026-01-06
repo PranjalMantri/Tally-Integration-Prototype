@@ -1,6 +1,39 @@
-import axios from "axios";
-import xml2js from "xml2js"
-import config from "./config.js"
+const fs = require('fs');
+const path = require('path');
+
+// 1. Setup logging immediately to catch startup errors
+function logErrorToFile(error) {
+    const logPath = path.join(process.cwd(), 'error_log.txt');
+    const timestamp = new Date().toISOString();
+    const errorMessage = `\n[${timestamp}] CRITICAL ERROR:\n${error.stack || error}\n--------------------------\n`;
+    
+    try {
+        fs.appendFileSync(logPath, errorMessage);
+    } catch (e) {
+        console.error("Failed to write to log file:", e);
+    }
+}
+
+// Prevent the window from closing immediately on error
+function keepAlive() {
+    console.log("\n[Process will stay alive for debugging. Press Ctrl+C to exit]");
+    setInterval(() => {}, 1000 * 60 * 60);
+}
+
+process.on('uncaughtException', (err) => {
+    logErrorToFile(err);
+    console.error('\n❌ CRITICAL ERROR (Uncaught Exception):', err);
+    keepAlive();
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    logErrorToFile(reason);
+    console.error('\n❌ CRITICAL ERROR (Unhandled Rejection):', reason);
+    keepAlive();
+});
+
+const xml2js = require("xml2js");
+const config = require("./config.js");
 
 const BACKEND_URL = config.backend_url
 const TALLY_URL = config.tally_url
@@ -23,7 +56,6 @@ const escapeXml = (unsafe) => {
 
 
 const TallyTemplates = {
-  // Generic Ledger Creator
   createLedger: (company, name, group) => `
     <ENVELOPE>
       <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
@@ -118,8 +150,9 @@ class TallyService {
 
   async isServerRunning() {
     try {
-      const response = await axios.get(this.tallyUrl, { timeout: 2000 });
-      return typeof response.data === 'string' && response.data.trim() === "<RESPONSE>TallyPrime Server is Running</RESPONSE>";
+      const response = await fetch(this.tallyUrl, { signal: AbortSignal.timeout(2000) });
+      const text = await response.text();
+      return typeof text === 'string' && text.trim() === "<RESPONSE>TallyPrime Server is Running</RESPONSE>";
     } catch (e) {
       return false;
     }
@@ -127,12 +160,15 @@ class TallyService {
 
   async _sendRequest(xmlPayload) {
     try {
-      const response = await axios.post(this.tallyUrl, xmlPayload, {
-        headers: { "Content-Type": "text/xml" }
+      const response = await fetch(this.tallyUrl, {
+        method: 'POST',
+        headers: { "Content-Type": "text/xml" },
+        body: xmlPayload
       });
-      return await this.parser.parseStringPromise(response.data);
+      const text = await response.text();
+      return await this.parser.parseStringPromise(text);
     } catch (error) {
-      console.error("❌ Tally Connection Error:", error.message);
+      console.error("Tally Connection Error:", error.message);
       return null;
     }
   }
@@ -163,29 +199,43 @@ class TallyService {
     try {
        // Try to find the specific error line in deep JSON
        const result = jsonResponse?.ENVELOPE?.BODY?.IMPORTDATA?.IMPORTRESULT;
-       if (result && result.LINEERROR) errorMsg = result.LINEERROR;
+       if (result) {
+         if (result.LINEERROR) {
+            errorMsg = Array.isArray(result.LINEERROR) ? result.LINEERROR.join("; ") : result.LINEERROR;
+         } else if (result.JHERROR) {
+            errorMsg = "System Error: " + (Array.isArray(result.JHERROR) ? result.JHERROR.join("; ") : result.JHERROR);
+         }
+       }
     } catch (e) {}
 
     console.error(`❌ Failed - ${context}: ${errorMsg}`);
+    console.log(`🔍 Full Tally Verification Response:`, JSON.stringify(jsonResponse, null, 2));
+
     return { success: false, message: errorMsg };
   }
 }
 
 const startPolling = async () => {
   const tally = new TallyService(TALLY_URL, TALLY_COMPANY);
-  console.log(`[AGENT] 🚀 Started polling ${BACKEND_URL} every ${config.polling_interval / 1000} seconds...`);
+  console.log(`[AGENT] Started polling ${BACKEND_URL} every ${config.polling_interval / 1000} seconds...`);
 
   setInterval(async () => {
     try {
       const isTallyRunning = await tally.isServerRunning();
       if (!isTallyRunning) {
-        console.log("[AGENT] ⚠️ Tally Server is not running or unreachable. Waiting...");
+        console.log("[AGENT] Tally Server is not running or unreachable. Waiting...");
         return;
       }
 
-      const { data: pendingItems } = await axios.get(`${BACKEND_URL}/api/sync/pending`, {
+      const response = await fetch(`${BACKEND_URL}/api/sync/pending`, {
         headers: { 'x-tally-agent-key': TALLY_AGENT_KEY }
       });
+      
+      if (!response.ok) {
+        throw new Error(`Backend returned ${response.status} ${response.statusText}`);
+      }
+
+      const pendingItems = await response.json();
       
       if (!Array.isArray(pendingItems) || pendingItems.length === 0) return;
 
@@ -242,8 +292,10 @@ const startPolling = async () => {
       }
 
     } catch (error) {
-      if (error.code !== 'ECONNREFUSED') {
-        console.error("[AGENT] Invalid API Key:", error.message);
+      const isConnectionError = error.cause?.code === 'ECONNREFUSED' || error.message.includes('fetch failed');
+      
+      if (!isConnectionError) {
+        console.error("[AGENT] Error:", error.message);
       } else {
         // Silent fail on connection refused to avoid console spam if server is down
       }
@@ -253,12 +305,17 @@ const startPolling = async () => {
 
 async function reportStatus(id, status, message) {
     try {
-        await axios.post(`${BACKEND_URL}/api/sync/status`, {
-            id, 
-            status, 
-            tallyResponse: typeof message === 'string' ? message : JSON.stringify(message)
-        }, {
-            headers: { 'x-tally-agent-key': TALLY_AGENT_KEY }
+        await fetch(`${BACKEND_URL}/api/sync/status`, {
+            method: 'POST',
+            body: JSON.stringify({
+                id, 
+                status, 
+                tallyResponse: typeof message === 'string' ? message : JSON.stringify(message)
+            }),
+            headers: { 
+                'Content-Type': 'application/json',
+                'x-tally-agent-key': TALLY_AGENT_KEY 
+            }
         });
     } catch(e) { 
         console.error("   -> ⚠️ Failed to report status to backend:", e.message); 

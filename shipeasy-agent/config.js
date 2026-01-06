@@ -1,4 +1,7 @@
-const config = {
+const fs = require('fs');
+const path = require('path');
+
+let config = {
     backend_url: "http://localhost:3000",
     tally_url: "http://localhost:9000",
     tally_company : "Test Company",
@@ -6,4 +9,17 @@ const config = {
     polling_interval: 5000
 }
 
-export default config
+// Try to load config.json from the current working directory
+try {
+    const configPath = path.join(process.cwd(), 'config.json');
+    if (fs.existsSync(configPath)) {
+        const fileContent = fs.readFileSync(configPath, 'utf-8');
+        const externalConfig = JSON.parse(fileContent);
+        config = { ...config, ...externalConfig };
+        console.log("Loaded external configuration from config.json");
+    }
+} catch (error) {
+    console.error("Error loading config.json:", error.message);
+}
+
+module.exports = config;
