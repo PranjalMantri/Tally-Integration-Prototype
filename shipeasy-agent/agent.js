@@ -2,16 +2,21 @@ const fs = require('fs');
 const path = require('path');
 
 // 1. Setup logging immediately to catch startup errors
-function logErrorToFile(error) {
+function logErrorToFile(error, context = "CRITICAL ERROR") {
     const logPath = path.join(process.cwd(), 'error_log.txt');
     const timestamp = new Date().toISOString();
-    const errorMessage = `\n[${timestamp}] CRITICAL ERROR:\n${error.stack || error}\n--------------------------\n`;
+    const errorMessage = `\n[${timestamp}] ${context}:\n${error.stack || error}\n--------------------------\n`;
     
     try {
         fs.appendFileSync(logPath, errorMessage);
     } catch (e) {
         console.error("Failed to write to log file:", e);
     }
+}
+
+// Helper for operational errors
+function logOperationalError(context, message) {
+    logErrorToFile(message, `OPERATIONAL ERROR [${context}]`);
 }
 
 // Prevent the window from closing immediately on error
@@ -327,7 +332,9 @@ const startPolling = async () => {
         const rawData = item.data; 
         
         if (!rawData) {
-           console.error("   -> ❌ Invalid Data Structure (Missing payload)");
+           const msg = "Invalid Data Structure (Missing payload)";
+           console.error(`   -> ❌ ${msg}`);
+           logOperationalError(`Item ${item.id}`, msg);
            await reportStatus(item.id, "FAILED", "Invalid Data Structure");
            continue;
         }
@@ -355,7 +362,9 @@ const startPolling = async () => {
         }
 
         if (mastersFailed) {
-            await reportStatus(item.id, "FAILED", "One or more Master Ledgers failed to create.");
+            const msg = "One or more Master Ledgers failed to create.";
+            logOperationalError(`Item ${item.id}`, msg);
+            await reportStatus(item.id, "FAILED", msg);
             continue; 
         }
 
