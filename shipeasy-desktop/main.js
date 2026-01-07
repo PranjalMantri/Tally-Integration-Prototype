@@ -182,6 +182,8 @@ function updateStatus(status) {
 }
 
 app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
+
     // Enable Auto-Launch
     app.setLoginItemSettings({
         openAtLogin: true,
