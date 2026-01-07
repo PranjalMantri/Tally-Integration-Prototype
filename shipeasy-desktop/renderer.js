@@ -5,6 +5,7 @@ const logList = document.getElementById('log-list');
 
 const connTally = document.getElementById('conn-tally');
 const connBackend = document.getElementById('conn-backend');
+const btnClearLogs = document.getElementById('btn-clear-logs');
 // New Elements
 const companySelect = document.getElementById('company-select');
 const btnRefreshCompanies = document.getElementById('btn-refresh-companies');
@@ -239,3 +240,10 @@ window.electronAPI.onLog((logData) => {
     
     logList.scrollTop = logList.scrollHeight;
 });
+
+// Clear Logs
+if (btnClearLogs) {
+    btnClearLogs.addEventListener('click', () => {
+        logList.innerHTML = '';
+    });
+}
