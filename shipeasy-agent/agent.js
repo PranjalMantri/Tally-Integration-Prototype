@@ -161,7 +161,7 @@ const TallyTemplates = {
           <REQUESTDATA>
             <TALLYMESSAGE xmlns:UDF="TallyUDF">
               <VOUCHER REMOTEID="${escapeXml(p.invoiceId)}" VCHTYPE="Sales" ACTION="Alter">
-                <remoteId>${escapeXml(p.invoiceId)}</GUID>
+                <GUID>${escapeXml(p.invoiceId)}</GUID>
                 <DATE>${p.invoiceDate}</DATE>
                 <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
                 <VOUCHERNUMBER>${escapeXml(p.invoiceNo)}</VOUCHERNUMBER>
