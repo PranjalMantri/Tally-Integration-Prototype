@@ -1,0 +1,16 @@
+{
+  "name": "shipeasy-desktop",
+  "version": "1.0.0",
+  "description": "Desktop Agent for Tally Integration",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "Synoris",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  },
+  "dependencies": {}
+}

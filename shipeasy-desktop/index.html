@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>ShipEasy Tally Agent</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ShipEasy Agent</h1>
+            <div class="status-group">
+                <span id="conn-tally" class="conn-dot" title="Tally Connection">Tally</span>
+                <span id="conn-backend" class="conn-dot" title="Backend Connection">Cloud</span>
+                <div class="status-badge" id="status-badge">Initializing...</div>
+            </div>
+        </header>
+
+        <div class="controls">
+            <button id="btn-start" class="btn primary">Start Service</button>
+            <button id="btn-stop" class="btn danger">Stop Service</button>
+        </div>
+
+        <div class="logs-container">
+            <h3>Activity Logs</h3>
+            <div id="log-list" class="log-list">
+                <!-- Logs will appear here -->
+            </div>
+        </div>
+    </div>
+    <script src="renderer.js"></script>
+</body>
+</html>
