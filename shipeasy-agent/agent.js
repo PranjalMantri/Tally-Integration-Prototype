@@ -1,52 +1,5 @@
-const fs = require('fs');
-const path = require('path');
-
-// Determine the root directory (handles both Node.js and pkg executable)
-const appDir = typeof process.pkg !== 'undefined' ? path.dirname(process.execPath) : __dirname;
-
-// 1. Setup logging immediately to catch startup errors
-function logErrorToFile(error, context = "CRITICAL ERROR") {
-    const logPath = path.join(appDir, 'error_log.txt');
-    const timestamp = new Date().toISOString();
-    const errorMessage = `\n[${timestamp}] ${context}:\n${error.stack || error}\n--------------------------\n`;
-    
-    try {
-        fs.appendFileSync(logPath, errorMessage);
-    } catch (e) {
-        console.error("Failed to write to log file:", e);
-    }
-}
-
-// Helper for operational errors
-function logOperationalError(context, message) {
-    logErrorToFile(message, `OPERATIONAL ERROR [${context}]`);
-}
-
-// Prevent the window from closing immediately on error
-function keepAlive() {
-    console.log("\n[Process will stay alive for debugging. Press Ctrl+C to exit]");
-    setInterval(() => {}, 1000 * 60 * 60);
-}
-
-process.on('uncaughtException', (err) => {
-    logErrorToFile(err);
-    console.error('\n❌ CRITICAL ERROR (Uncaught Exception):', err);
-    keepAlive();
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    logErrorToFile(reason);
-    console.error('\n❌ CRITICAL ERROR (Unhandled Rejection):', reason);
-    keepAlive();
-});
-
+const EventEmitter = require('events');
 const xml2js = require("xml2js");
-const config = require("./config.js");
-
-const BACKEND_URL = config.backend_url
-const TALLY_URL = config.tally_url
-const TALLY_COMPANY = config.tally_company
-const TALLY_AGENT_KEY = config.tally_agent_key
 
 // Helper to sanitize XML characters
 const escapeXml = (unsafe) => {
@@ -61,7 +14,6 @@ const escapeXml = (unsafe) => {
     }
   });
 };
-
 
 const TallyTemplates = {
   createLedger: (company, name, group) => `
@@ -209,230 +161,270 @@ const TallyTemplates = {
   }
 };
 
-class TallyService {
-  constructor(url, companyName) {
-    this.tallyUrl = url;
-    this.company = companyName;
-    this.parser = new xml2js.Parser({ explicitArray: false });
-  }
-
-  async isServerRunning() {
-    try {
-      const response = await fetch(this.tallyUrl, { signal: AbortSignal.timeout(2000) });
-      const text = await response.text();
-      return typeof text === 'string' && text.trim() === "<RESPONSE>TallyPrime Server is Running</RESPONSE>";
-    } catch (e) {
-      return false;
-    }
-  }
-
-  async _sendRequest(xmlPayload) {
-    try {
-      const response = await fetch(this.tallyUrl, {
-        method: 'POST',
-        headers: { "Content-Type": "text/xml" },
-        body: xmlPayload
-      });
-      const text = await response.text();
-      return await this.parser.parseStringPromise(text);
-    } catch (error) {
-      console.error("Tally Connection Error:", error.message);
-      return null;
-    }
-  }
-
-  async createLedger(name, group) {
-    const xml = TallyTemplates.createLedger(this.company, name, group);
-    const response = await this._sendRequest(xml);
-    return this._checkResponseStatus(response, `Ledger [${name}]`);
-  }
-
-  async checkVoucherExists(remoteId) {
-    try {
-      const xml = TallyTemplates.checkVoucherExists(this.company, remoteId);
-      const response = await this._sendRequest(xml);
-      if (!response || !response.ENVELOPE) {
-          console.log("[DEBUG] Invalid or empty response from Tally during check");
-          return false;
-      }
-      
-      const str = JSON.stringify(response);
-      // Log part of the response to see what we got back
-
-      const found = str.includes(`"${remoteId}"`);
-      return found;
-    } catch (e) {
-      console.error("Error checking voucher existence:", e);
-      return false;
-    }
-  }
-
-  async createInvoice(payload) {
-    const xml = TallyTemplates.createSalesVoucher(this.company, payload);
-    const response = await this._sendRequest(xml);
-    return this._checkResponseStatus(response, `Voucher [${payload.invoiceNo}]`);
-  }
-
-  _checkResponseStatus(jsonResponse, context) {
-    if (!jsonResponse) return { success: false, message: "No response from Tally" };
-    
-    const str = JSON.stringify(jsonResponse);
-
-    // Tally returns "CREATED: 1" for success, or "CREATED: 0" + "ERRORS: 0" for duplicates
-    if (str.includes('"CREATED":"1"') || (str.includes('"CREATED":"0"') && str.includes('"ERRORS":"0"'))) {
-      return { success: true, message: "Success" };
-    }
-    
-    let errorMsg = "Tally rejected data";
-    try {
-       // Try to find the specific error line in deep JSON
-       const result = jsonResponse?.ENVELOPE?.BODY?.IMPORTDATA?.IMPORTRESULT;
-       if (result) {
-         if (result.LINEERROR) {
-            errorMsg = Array.isArray(result.LINEERROR) ? result.LINEERROR.join("; ") : result.LINEERROR;
-         } else if (result.JHERROR) {
-            errorMsg = "System Error: " + (Array.isArray(result.JHERROR) ? result.JHERROR.join("; ") : result.JHERROR);
-         }
-       }
-    } catch (e) {}
-
-    console.error(`❌ Failed - ${context}: ${errorMsg}`);
-    console.log(`🔍 Full Tally Verification Response:`, JSON.stringify(jsonResponse, null, 2));
-
-    return { success: false, message: errorMsg };
-  }
-}
-
-const startPolling = async () => {
-  const tally = new TallyService(TALLY_URL, TALLY_COMPANY);
-  console.log(`[AGENT] Started polling ${BACKEND_URL} every ${config.polling_interval / 1000} seconds...`);
-
-  setInterval(async () => {
-    try {
-      const isTallyRunning = await tally.isServerRunning();
-      if (!isTallyRunning) {
-        console.log("[AGENT] Tally Server is not running or unreachable. Waiting...");
-        return;
-      }
-
-      const response = await fetch(`${BACKEND_URL}/api/sync/pending`, {
-        headers: { 'x-tally-agent-key': TALLY_AGENT_KEY }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Backend returned ${response.status} ${response.statusText}`);
-      }
-
-      const pendingItems = await response.json();
-      
-      if (!Array.isArray(pendingItems) || pendingItems.length === 0) return;
-
-      console.log(`[AGENT] Found ${pendingItems.length} pending items.`);
-
-      for (const item of pendingItems) {
-        console.log(`\n[AGENT] Processing DB ID: ${item.id}...`);
-
-        const rawData = item.data; 
+class TallyAgent extends EventEmitter {
+    constructor(config) {
+        super();
+        this.config = config || {};
         
+        // Use provided config or fall back to defaults/file if needed
+        // Assuming config is passed fully populated from the app
+        this.tallyUrl = this.config.tally_url || "http://localhost:9000";
+        this.company = this.config.tally_company || "Test Company";
+        this.backendUrl = this.config.backend_url;
+        this.agentKey = this.config.tally_agent_key;
+        this.pollingInterval = this.config.polling_interval || 5000;
+        
+        this.parser = new xml2js.Parser({ explicitArray: false });
+        this.isRunning = false;
+        this.pollInterval = null;
+    }
+
+    start() {
+        if (this.isRunning) return;
+        this.isRunning = true;
+        
+        this.emitLog('info', 'Agent service started.');
+        this.emitLog('info', `Targeting Tally Company: ${this.company}`);
+        this.emitLog('info', `Syncing from Backend: ${this.backendUrl}`);
+
+        this.poll(); // Run immediately
+        this.pollInterval = setInterval(() => this.poll(), this.pollingInterval);
+    }
+
+    stop() {
+        if (!this.isRunning) return;
+        this.isRunning = false;
+        if (this.pollInterval) clearInterval(this.pollInterval);
+        this.pollInterval = null;
+        this.emitLog('info', 'Agent service stopped.');
+    }
+
+    emitLog(type, message, detail = null) {
+        // Structured log for the UI
+        this.emit('log', {
+            timestamp: new Date().toISOString(),
+            type, // 'info', 'success', 'error', 'warning'
+            message,
+            detail
+        });
+    }
+
+    async poll() {
+        try {
+            const isTallyRunning = await this.isServerRunning();
+            
+            // Emit connection status (Tally: Boolean, Backend: Unknown yet)
+            this.emit('connection-status', { tally: isTallyRunning });
+
+            if (!isTallyRunning) {
+                this.emitLog('warning', "Tally Server is not reachable. Is Tally Open?");
+                return;
+            }
+
+            const response = await fetch(`${this.backendUrl}/api/sync/pending`, {
+                headers: { 'x-tally-agent-key': this.agentKey }
+            });
+
+            this.emit('connection-status', { tally: true, backend: response.ok });
+            
+            if (!response.ok) {
+                this.emitLog('error', `Backend Connection Failed: ${response.statusText}`);
+                return;
+            }
+
+            const pendingItems = await response.json();
+            
+            if (!Array.isArray(pendingItems) || pendingItems.length === 0) return;
+
+            this.emitLog('info', `Found ${pendingItems.length} new invoices to sync.`);
+
+            for (const item of pendingItems) {
+                await this.processItem(item);
+            }
+
+        } catch (error) {
+            const isConnectionError = error.cause?.code === 'ECONNREFUSED' || error.message.includes('fetch failed');
+            if (isConnectionError) {
+                this.emitLog('debug', 'Connection refused (Backend/Tally)'); 
+            } else {
+                this.emitLog('error', `Critical Error: ${error.message}`, error.stack);
+            }
+        }
+    }
+
+    async processItem(item) {
+        const rawData = item.data;
+        const invoiceRef = rawData?.invoiceNo || `ID-${item.id}`;
+
+        this.emitLog('info', `Processing Invoice #${invoiceRef}...`);
+
         if (!rawData) {
-           const msg = "Invalid Data Structure (Missing payload)";
-           console.error(`   -> ❌ ${msg}`);
-           logOperationalError(`Item ${item.id}`, msg);
-           await reportStatus(item.id, "FAILED", "Invalid Data Structure");
-           continue;
+           await this.reportStatus(item.id, "FAILED", "Invalid Data Structure");
+           this.emitLog('error', `Invoice #${invoiceRef} Failed: Invalid Data`);
+           return;
         }
 
         let mastersFailed = false;
 
         // 1. Party Ledger
-        const partyRes = await tally.createLedger(rawData.party.name, "Sundry Debtors");
-        if (!partyRes.success) mastersFailed = true;
+        const partyRes = await this.createLedger(rawData.party.name, "Sundry Debtors");
+        if (!partyRes.success) {
+            mastersFailed = true;
+            this.emitLog('error', `Failed to create Party Ledger '${rawData.party.name}'`, partyRes.message);
+        }
 
         // 2. Item Ledgers
         if (rawData.items) {
           for (const i of rawData.items) {
-            const itemRes = await tally.createLedger(i.ledgerName, "Sales Accounts");
-            if (!itemRes.success) mastersFailed = true;
+            const itemRes = await this.createLedger(i.ledgerName, "Sales Accounts");
+            if (!itemRes.success) {
+                mastersFailed = true;
+                this.emitLog('error', `Failed to create Item Ledger '${i.ledgerName}'`, itemRes.message);
+            }
           }
         }
 
         // 3. Tax Ledgers
         if (rawData.taxes) {
           for (const taxName of Object.keys(rawData.taxes)) {
-            const taxRes = await tally.createLedger(taxName, "Duties & Taxes");
-            if (!taxRes.success) mastersFailed = true;
+            const taxRes = await this.createLedger(taxName, "Duties & Taxes");
+            if (!taxRes.success) {
+                mastersFailed = true;
+                this.emitLog('error', `Failed to create Tax Ledger '${taxName}'`, taxRes.message);
+            }
           }
         }
 
         if (mastersFailed) {
-            const msg = "One or more Master Ledgers failed to create.";
-            logOperationalError(`Item ${item.id}`, msg);
-            await reportStatus(item.id, "FAILED", msg);
-            continue; 
+            await this.reportStatus(item.id, "FAILED", "Master Ledger Creation Failed");
+            this.emitLog('error', `Invoice #${invoiceRef} Failed: Could not create required Ledgers.`);
+            return; 
         }
 
-        console.log(`   -> Creating Voucher ${rawData.invoiceNo}...`);
-        
         // Small delay to let Tally index new ledgers
         await new Promise(r => setTimeout(r, 500)); 
 
-        const voucherRes = await tally.createInvoice(rawData);
+        const voucherRes = await this.createInvoice(rawData);
         
         let status = "FAILED";
         let message = voucherRes.message;
 
         if (voucherRes.success) {
-             console.log(`   -> Verifying creation for RemoteID: ${rawData.invoiceId}...`);
+             this.emitLog('info', `Verifying Invoice #${invoiceRef} in Tally...`);
              // Wait briefly for Tally to index
              await new Promise(r => setTimeout(r, 1000));
              
-             const exists = await tally.checkVoucherExists(rawData.invoiceId);
+             const exists = await this.checkVoucherExists(rawData.invoiceId);
              if (exists) {
                  status = "SUCCESS";
-                 message = "Verified: Created Successfully in Tally";
+                 message = "Verified: Created Successfully";
+                 this.emitLog('success', `Invoice #${invoiceRef} successfully synced to Tally.`);
              } else {
                  status = "FAILED";
                  message = "Verification Failed: Voucher not found in Tally after creation.";
-                 console.error("   -> ❌ Verification Failed");
-                 logOperationalError(`Voucher ${rawData.invoiceNo}`, message);
+                 this.emitLog('error', `Invoice #${invoiceRef} creation failed verification.`, message);
              }
         } else {
-             logOperationalError(`Voucher ${rawData.invoiceNo}`, `Creation Failed: ${message}`);
+             this.emitLog('error', `Invoice #${invoiceRef} rejected by Tally.`, message);
         }
 
-        console.log(`   -> Result: ${status}`);
-        await reportStatus(item.id, status, message);
-      }
-
-    } catch (error) {
-      const isConnectionError = error.cause?.code === 'ECONNREFUSED' || error.message.includes('fetch failed');
-      
-      if (!isConnectionError) {
-        console.error("[AGENT] Error:", error.message);
-      } else {
-        // Silent fail on connection refused to avoid console spam if server is down
-      }
+        await this.reportStatus(item.id, status, message);
     }
-  }, config.polling_interval);
-};
 
-async function reportStatus(id, status, message) {
-    try {
-        await fetch(`${BACKEND_URL}/api/sync/status`, {
+    async isServerRunning() {
+        try {
+          const response = await fetch(this.tallyUrl, { signal: AbortSignal.timeout(2000) });
+          const text = await response.text();
+          return typeof text === 'string' && text.trim() === "<RESPONSE>TallyPrime Server is Running</RESPONSE>";
+        } catch (e) {
+          return false;
+        }
+    }
+
+    async _sendRequest(xmlPayload) {
+        try {
+          const response = await fetch(this.tallyUrl, {
             method: 'POST',
-            body: JSON.stringify({
-                id, 
-                status, 
-                tallyResponse: typeof message === 'string' ? message : JSON.stringify(message)
-            }),
-            headers: { 
-                'Content-Type': 'application/json',
-                'x-tally-agent-key': TALLY_AGENT_KEY 
-            }
-        });
-    } catch(e) { 
-        console.error("   -> ⚠️ Failed to report status to backend:", e.message); 
+            headers: { "Content-Type": "text/xml" },
+            body: xmlPayload
+          });
+          const text = await response.text();
+          return await this.parser.parseStringPromise(text);
+        } catch (error) {
+          console.error("Tally Connection Error:", error.message);
+          return null;
+        }
+    }
+
+    async createLedger(name, group) {
+        const xml = TallyTemplates.createLedger(this.company, name, group);
+        const response = await this._sendRequest(xml);
+        return this._checkResponseStatus(response, `Ledger [${name}]`);
+    }
+
+    async checkVoucherExists(remoteId) {
+        try {
+          const xml = TallyTemplates.checkVoucherExists(this.company, remoteId);
+          const response = await this._sendRequest(xml);
+          if (!response || !response.ENVELOPE) return false;
+          
+          const str = JSON.stringify(response);
+          return str.includes(`"${remoteId}"`);
+        } catch (e) {
+          return false;
+        }
+    }
+
+    async createInvoice(payload) {
+        const xml = TallyTemplates.createSalesVoucher(this.company, payload);
+        const response = await this._sendRequest(xml);
+        return this._checkResponseStatus(response, `Voucher [${payload.invoiceNo}]`);
+    }
+
+    async reportStatus(id, status, message) {
+        try {
+            await fetch(`${this.backendUrl}/api/sync/status`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id, 
+                    status, 
+                    tallyResponse: typeof message === 'string' ? message : JSON.stringify(message)
+                }),
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-tally-agent-key': this.agentKey 
+                }
+            });
+        } catch(e) { 
+            this.emitLog('warning', `Failed to update status for item ${id} to backend.`);
+        }
+    }
+
+    _checkResponseStatus(jsonResponse, context) {
+        if (!jsonResponse) return { success: false, message: "No response from Tally" };
+        
+        const str = JSON.stringify(jsonResponse);
+    
+        // Tally returns "CREATED: 1" for success, or "CREATED: 0" + "ERRORS: 0" for duplicates
+        if (str.includes('"CREATED":"1"') || (str.includes('"CREATED":"0"') && str.includes('"ERRORS":"0"'))) {
+          return { success: true, message: "Success" };
+        }
+        
+        let errorMsg = "Tally rejected data";
+        try {
+           // Try to find the specific error line in deep JSON
+           const result = jsonResponse?.ENVELOPE?.BODY?.IMPORTDATA?.IMPORTRESULT;
+           if (result) {
+             if (result.LINEERROR) {
+                errorMsg = Array.isArray(result.LINEERROR) ? result.LINEERROR.join("; ") : result.LINEERROR;
+             } else if (result.JHERROR) {
+                errorMsg = "System Error: " + (Array.isArray(result.JHERROR) ? result.JHERROR.join("; ") : result.JHERROR);
+             }
+           }
+        } catch (e) {}
+    
+        return { success: false, message: errorMsg };
     }
 }
 
-startPolling();
+module.exports = TallyAgent;
