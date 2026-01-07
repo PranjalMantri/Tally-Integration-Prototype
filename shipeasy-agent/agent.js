@@ -16,6 +16,33 @@ const escapeXml = (unsafe) => {
 };
 
 const TallyTemplates = {
+  listCompanies: () => `
+    <ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Collection</TYPE>
+        <ID>List of Companies</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+        <STATICVARIABLES>
+            <!-- you can tweak these based on what subset you want -->
+            <SVIsSimpleCompany>No</SVIsSimpleCompany>
+        </STATICVARIABLES>
+        <TDL>
+            <TDLMESSAGE>
+            <COLLECTION NAME="List of Companies" ISINITIALIZE="Yes">
+                <TYPE>Company</TYPE>
+                <NATIVEMETHOD>Name</NATIVEMETHOD>
+            </COLLECTION>
+            </TDLMESSAGE>
+        </TDL>
+        </DESC>
+    </BODY>
+    </ENVELOPE>
+`,
+
   createLedger: (company, name, group) => `
     <ENVELOPE>
       <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
@@ -339,6 +366,74 @@ class TallyAgent extends EventEmitter {
         } catch (e) {
           return false;
         }
+    }
+
+    async getCompanies() {
+        this.emitLog('info', 'Fetching company list from Tally...');
+        try {
+            const xml = TallyTemplates.listCompanies();
+            const response = await this._sendRequest(xml);
+            
+            // Handle Data from Native Collection (DATA) or Legacy Report (EXPORTDATA)
+            const body = response?.ENVELOPE?.BODY;
+            const dataRoot = body?.DATA || body?.EXPORTDATA;
+
+            if (!dataRoot) {
+                this.emitLog('warning', 'Received response with no data from Tally.');
+                this.emitLog('debug', `Response: ${JSON.stringify(response)}`);
+                return [];
+            }
+
+            let companies = [];
+
+            // 1. Native Collection Export (from "List of Companies")
+            if (dataRoot.COLLECTION && dataRoot.COLLECTION.COMPANY) {
+                const list = Array.isArray(dataRoot.COLLECTION.COMPANY) 
+                    ? dataRoot.COLLECTION.COMPANY 
+                    : [dataRoot.COLLECTION.COMPANY];
+                
+                companies = list.map(c => {
+                    // Extract name from various XML2JS shapes
+                    // Shape A: <NAME>Test Company</NAME>  => c.NAME
+                    // Shape B: <NAME TYPE="String">Test</NAME> => c.NAME._
+                    // Shape C: <COMPANY NAME="Test" ...> => c.$.NAME
+                    if (c.$ && c.$.NAME) return c.$.NAME;
+                    if (c.NAME && c.NAME._) return c.NAME._;
+                    if (typeof c.NAME === 'string') return c.NAME;
+                    return null;
+                }).filter(Boolean);
+            } 
+            // 2. Fallback: Recursive search (if using custom TDL with COMPANYNAME tag)
+            else {
+                 const findKeys = (obj, key, list = []) => {
+                    if (!obj) return list;
+                    if (Array.isArray(obj)) {
+                        obj.forEach(i => findKeys(i, key, list));
+                        return list;
+                    }
+                    if (typeof obj === 'object') {
+                        for (const k in obj) {
+                            if (k === key) list.push(obj[k]);
+                            else findKeys(obj[k], key, list);
+                        }
+                    }
+                    return list;
+                };
+                companies = findKeys(response, 'COMPANYNAME');
+            }
+
+            const uniqueNames = [...new Set(companies)].sort();
+            return uniqueNames;
+
+        } catch (e) {
+            this.emitLog('error', `Failed to fetch companies: ${e.message}`);
+            return [];
+        }
+    }
+
+    setCompany(companyName) {
+        this.company = companyName;
+        this.emitLog('info', `Target Company switched to: ${companyName}`);
     }
 
     async _sendRequest(xmlPayload) {

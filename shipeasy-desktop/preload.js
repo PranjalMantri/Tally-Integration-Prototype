@@ -6,5 +6,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onConnectionStatus: (callback) => ipcRenderer.on('connection-status', (_event, value) => callback(value)),
   startAgent: () => ipcRenderer.invoke('start-agent'),
   stopAgent: () => ipcRenderer.invoke('stop-agent'),
-  getStatus: () => ipcRenderer.invoke('get-status')
+  getStatus: () => ipcRenderer.invoke('get-status'),
+  getCompanies: () => ipcRenderer.invoke('get-companies'),
+  setCompany: (name) => ipcRenderer.invoke('set-company', name),
+  getCurrentCompany: () => ipcRenderer.invoke('get-current-company')
 });

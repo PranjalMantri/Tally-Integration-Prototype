@@ -25,7 +25,34 @@ function loadConfig() {
 
 // Initialize Agent
 const agentConfig = loadConfig();
+
+// Persisted Setting: Selected Company
+const statePath = path.join(app.getPath('userData'), 'app-state.json');
+let savedState = {};
+try {
+    if (fs.existsSync(statePath)) {
+        savedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    }
+} catch (e) {
+    console.error("Failed to load state", e);
+}
+
+// Override config company if user selected one previously
+if (savedState.selectedCompany && savedState.selectedCompany !== "No Companies Found (Is Tally Open?)") {
+    agentConfig.tally_company = savedState.selectedCompany;
+}
+
 agent = new TallyAgent(agentConfig);
+
+function saveSelectedCompany(companyName) {
+    if (!companyName || companyName === "No Companies Found (Is Tally Open?)") return;
+    try {
+        savedState.selectedCompany = companyName;
+        fs.writeFileSync(statePath, JSON.stringify(savedState));
+    } catch(e) {
+        console.error("Failed to save state", e);
+    }
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -145,6 +172,26 @@ ipcMain.handle('start-agent', () => {
 ipcMain.handle('stop-agent', () => {
     agent.stop();
     return 'Stopped';
+});
+
+ipcMain.handle('get-companies', async () => {
+    if (!agent) return [];
+    // If agent is not running (polling), we can still fetch companies if Tally is open
+    // Ideally we might need to "ping" tally. usage of specific agent method.
+    return await agent.getCompanies();
+});
+
+ipcMain.handle('set-company', (_event, companyName) => {
+    if (agent) {
+        agent.setCompany(companyName);
+        saveSelectedCompany(companyName);
+        return true;
+    }
+    return false;
+});
+
+ipcMain.handle('get-current-company', () => {
+    return agent ? agent.company : '';
 });
 
 ipcMain.handle('get-status', () => {

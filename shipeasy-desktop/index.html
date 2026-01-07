@@ -17,6 +17,12 @@
         </header>
 
         <div class="controls">
+            <div class="company-selector">
+                <select id="company-select" disabled>
+                    <option value="">Loading Companies...</option>
+                </select>
+                <button id="btn-refresh-companies" class="btn secondary" title="Refresh Company List">↻</button>
+            </div>
             <button id="btn-start" class="btn primary">Start Service</button>
             <button id="btn-stop" class="btn danger">Stop Service</button>
         </div>
