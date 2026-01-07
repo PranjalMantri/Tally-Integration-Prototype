@@ -24,6 +24,7 @@
         <header>
             <h1>ShipEasy Agent</h1>
             <div class="status-group">
+                <button id="btn-settings" class="btn-icon" title="Settings">⚙️</button>
                 <span id="conn-tally" class="conn-dot" title="Tally Connection">Tally</span>
                 <span id="conn-backend" class="conn-dot" title="Backend Connection">Cloud</span>
                 <div class="status-badge" id="status-badge">Initializing...</div>
@@ -48,6 +49,24 @@
             </div>
         </div>
     </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span id="close-settings" class="close">&times;</span>
+            <h2>Settings</h2>
+            <div class="form-group">
+                <label for="settings-api-key">Update API Key</label>
+                <input type="text" id="settings-api-key" placeholder="Enter new API Key">
+                <small>Updating the key will restart the service.</small>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-save-settings" class="btn primary">Save & Restart</button>
+                <button id="btn-cancel-settings" class="btn secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="renderer.js"></script>
 </body>
 </html>

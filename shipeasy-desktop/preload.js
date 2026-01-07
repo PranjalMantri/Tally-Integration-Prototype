@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onShowSetup: (callback) => ipcRenderer.on('show-setup', (_event) => callback()),
   onShowDashboard: (callback) => ipcRenderer.on('show-dashboard', (_event) => callback()),
   saveConfig: (key) => ipcRenderer.invoke('save-setup-config', key),
+  updateApiKey: (key) => ipcRenderer.invoke('update-api-key', key),
+  getApiKeyMasked: () => ipcRenderer.invoke('get-api-key-masked'),
   startAgent: () => ipcRenderer.invoke('start-agent'),
   stopAgent: () => ipcRenderer.invoke('stop-agent'),
   getStatus: () => ipcRenderer.invoke('get-status'),

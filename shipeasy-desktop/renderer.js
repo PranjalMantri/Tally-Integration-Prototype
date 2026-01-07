@@ -15,6 +15,14 @@ const inputAgentKey = document.getElementById('input-agent-key');
 const btnSaveKey = document.getElementById('btn-save-key');
 const setupError = document.getElementById('setup-error');
 
+// Settings Elements
+const btnSettings = document.getElementById('btn-settings');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettings = document.getElementById('close-settings');
+const btnSaveSettings = document.getElementById('btn-save-settings');
+const btnCancelSettings = document.getElementById('btn-cancel-settings');
+const settingsApiKeyInput = document.getElementById('settings-api-key');
+
 // --- View Switching Logic ---
 window.electronAPI.onShowSetup(() => {
     setupView.style.display = 'block';
@@ -48,6 +56,74 @@ btnSaveKey.addEventListener('click', async () => {
         btnSaveKey.textContent = "Save & Start Agent";
     }
 });
+
+let originalMaskedKey = '';
+
+// Settings Logic
+if(btnSettings) {
+    btnSettings.addEventListener('click', async () => {
+        settingsModal.style.display = 'block';
+        
+        // Reset State
+        settingsApiKeyInput.disabled = false;
+        btnSaveSettings.disabled = false;
+        btnSaveSettings.textContent = 'Save & Restart';
+        
+        // Load Masked Key
+        originalMaskedKey = await window.electronAPI.getApiKeyMasked();
+        settingsApiKeyInput.value = originalMaskedKey;
+    });
+}
+
+function closeSettingsModal() {
+    settingsModal.style.display = 'none';
+    settingsApiKeyInput.value = ''; // Clear on close for security
+}
+
+if(closeSettings) closeSettings.addEventListener('click', closeSettingsModal);
+if(btnCancelSettings) btnCancelSettings.addEventListener('click', closeSettingsModal);
+
+window.onclick = function(event) {
+    if (event.target == settingsModal) {
+        closeSettingsModal();
+    }
+}
+
+if(btnSaveSettings) {
+    btnSaveSettings.addEventListener('click', async () => {
+        const newKey = settingsApiKeyInput.value.trim();
+        
+        // If empty or same as masked key (user didn't change it), warn or ignore
+        if (!newKey) {
+            alert("Please enter a valid key.");
+            return;
+        }
+        
+        if (newKey === originalMaskedKey) {
+            // No change
+            closeSettingsModal();
+            return; 
+        }
+
+        btnSaveSettings.disabled = true;
+        settingsApiKeyInput.disabled = true; // Disable input while updating
+        btnSaveSettings.textContent = 'Updating...';
+
+        const success = await window.electronAPI.updateApiKey(newKey);
+        
+        if (success) {
+            closeSettingsModal();
+            alert("API Key updated and agent restarted.");
+        } else {
+            alert("Failed to update API Key.");
+        }
+        
+        // Re-enable in all cases
+        btnSaveSettings.disabled = false;
+        settingsApiKeyInput.disabled = false;
+        btnSaveSettings.textContent = 'Save & Restart';
+    });
+}
 
 function updateStatusUI(status) {
     statusBadge.textContent = status;

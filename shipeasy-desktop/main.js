@@ -218,6 +218,43 @@ ipcMain.handle('save-setup-config', async (_event, key) => {
     return true;
 });
 
+// IPC: Update API Key from Settings
+ipcMain.handle('update-api-key', async (_event, key) => {
+    if (!key) return false;
+
+    // Save to disk
+    const newConfig = saveUserConfig({ tally_agent_key: key });
+    if (!newConfig) return false;
+
+    // Restart Agent logic
+    if (agent) {
+        agent.stop();
+        // Give it a moment to cleanup if necessary, or just re-init
+        // Re-initializing handles removing listeners
+        updateStatus('Stopped');
+    }
+
+    initAgent(newConfig);
+    agent.start();
+    
+    // Ensure tray is created if it wasn't for some reason
+    if (!tray) createTray();
+    
+    // Update UI status
+    updateStatus('Running');
+    
+    return true;
+});
+
+// IPC: Get Masked API Key
+ipcMain.handle('get-api-key-masked', () => {
+    const config = loadUserConfig();
+    const key = config.tally_agent_key;
+    if (!key) return '';
+
+    return key.split("").map((x) => "*").join("")
+});
+
 // Setup IPC handlers from UI
 ipcMain.handle('start-agent', () => {
     if (agent) {
