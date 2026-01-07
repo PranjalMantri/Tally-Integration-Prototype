@@ -10,11 +10,19 @@ let tray;
 let agent;
 let isQuitting = false;
 
-function loadConfig() {
+const USER_DATA_PATH = app.getPath('userData');
+const CONFIG_PATH = path.join(USER_DATA_PATH, 'config.json');
+const STATE_PATH = path.join(USER_DATA_PATH, 'app-state.json');
+
+function loadUserConfig() {
     try {
-        const configPath = path.join(__dirname, '../shipeasy-agent/config.json');
-        if (fs.existsSync(configPath)) {
-            const data = fs.readFileSync(configPath, 'utf8');
+        if (fs.existsSync(CONFIG_PATH)) {
+            const data = fs.readFileSync(CONFIG_PATH, 'utf8');
+            return JSON.parse(data);
+        }
+        const localConfigPath = path.join(__dirname, '../shipeasy-agent/config.json');
+        if (fs.existsSync(localConfigPath)) {
+            const data = fs.readFileSync(localConfigPath, 'utf8');
             return JSON.parse(data);
         }
     } catch (e) {
@@ -23,42 +31,67 @@ function loadConfig() {
     return {};
 }
 
-// Initialize Agent
-const agentConfig = loadConfig();
-
-// Persisted Setting: Selected Company
-const statePath = path.join(app.getPath('userData'), 'app-state.json');
-let savedState = {};
-try {
-    if (fs.existsSync(statePath)) {
-        savedState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+function saveUserConfig(newConfig) {
+    try {
+        const current = loadUserConfig();
+        const updated = { ...current, ...newConfig };
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2));
+        return updated;
+    } catch (e) {
+        console.error("Failed to save config:", e);
+        return null;
     }
-} catch (e) {
-    console.error("Failed to load state", e);
 }
 
-// Override config company if user selected one previously
-if (savedState.selectedCompany && savedState.selectedCompany !== "No Companies Found (Is Tally Open?)") {
-    agentConfig.tally_company = savedState.selectedCompany;
+function loadState() {
+    try {
+        if (fs.existsSync(STATE_PATH)) {
+            return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+        }
+    } catch (e) { console.error("Failed to load state", e); }
+    return {};
 }
-
-agent = new TallyAgent(agentConfig);
 
 function saveSelectedCompany(companyName) {
     if (!companyName || companyName === "No Companies Found (Is Tally Open?)") return;
     try {
-        savedState.selectedCompany = companyName;
-        fs.writeFileSync(statePath, JSON.stringify(savedState));
-    } catch(e) {
-        console.error("Failed to save state", e);
-    }
+        const state = loadState();
+        state.selectedCompany = companyName;
+        fs.writeFileSync(STATE_PATH, JSON.stringify(state));
+    } catch(e) { console.error("Failed to save state", e); }
 }
 
-function createWindow() {
+function initAgent(config) {
+    if (agent) {
+        agent.stop();
+        agent.removeAllListeners(); 
+    }
+
+    // Merge persisted company selection
+    const state = loadState();
+    if (state.selectedCompany && state.selectedCompany !== "No Companies Found (Is Tally Open?)") {
+        config.tally_company = state.selectedCompany;
+    }
+
+    agent = new TallyAgent(config);
+
+    // Re-attach listeners
+    agent.on('log', (logData) => {
+        if (mainWindow) mainWindow.webContents.send('agent-log', logData);
+    });
+
+    agent.on('connection-status', (status) => {
+        if (mainWindow) mainWindow.webContents.send('connection-status', status);
+    });
+
+    return agent;
+}
+
+function createWindow(show = false) {
     mainWindow = new BrowserWindow({
         width: 800,
         height: 600,
-        show: false, 
+        show: show, 
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -68,6 +101,18 @@ function createWindow() {
     });
 
     mainWindow.loadFile('index.html');
+
+    mainWindow.once('ready-to-show', () => {
+         // Determine which view to show
+         const config = loadUserConfig();
+         if (config.tally_agent_key) {
+             mainWindow.webContents.send('show-dashboard');
+             if (show) mainWindow.show();
+         } else {
+             mainWindow.webContents.send('show-setup');
+             mainWindow.show();
+         }
+    });
 
     // Handle Close: Hide instead of close
     mainWindow.on('close', (event) => {
@@ -80,48 +125,54 @@ function createWindow() {
 }
 
 function createTray() {
+    if (tray) return;
+
     const iconPath = path.join(__dirname, 'assets/icon.png');
-    
     tray = new Tray(iconPath);
     tray.setToolTip('ShipEasy Tally Agent');
 
-    const contextMenu = Menu.buildFromTemplate([
-        { 
-            label: 'Show Logs', 
-            click: () => mainWindow.show() 
-        },
-        { type: 'separator' },
-        { 
-            label: 'Start Agent', 
-            click: () => {
-                agent.start();
-                updateStatus('Running');
-            } 
-        },
-        { 
-            label: 'Stop Agent', 
-            enabled: true,
-            click: () => {
-                agent.stop();
-                updateStatus('Stopped');
-            } 
-        },
-        { type: 'separator' },
-        { 
-            label: 'Quit', 
-            click: () => {
-                isQuitting = true;
-                agent.stop();
-                app.quit();
-            } 
-        }
-    ]);
+    const updateMenu = () => {
+        const contextMenu = Menu.buildFromTemplate([
+            { label: 'Open Dashboard', click: () => mainWindow.show() },
+            { type: 'separator' },
+            { 
+                label: 'Start Agent', 
+                enabled: !!(agent && !agent.isRunning),
+                click: () => {
+                    if (agent) {
+                        agent.start();
+                        updateStatus('Running');
+                        updateMenu();
+                    }
+                } 
+            },
+            { 
+                label: 'Stop Agent', 
+                enabled: !!(agent && agent.isRunning),
+                click: () => {
+                    if (agent) {
+                        agent.stop();
+                        updateStatus('Stopped');
+                        updateMenu();
+                    }
+                } 
+            },
+            { type: 'separator' },
+            { 
+                label: 'Quit', 
+                click: () => {
+                    isQuitting = true;
+                    if(agent) agent.stop();
+                    app.quit();
+                } 
+            }
+        ]);
+        tray.setContextMenu(contextMenu);
+    };
 
-    tray.setContextMenu(contextMenu);
-
-    tray.on('double-click', () => {
-        mainWindow.show();
-    });
+    updateMenu();
+    tray.on('double-click', () => mainWindow.show());
+    
 }
 
 function updateStatus(status) {
@@ -137,47 +188,55 @@ app.whenReady().then(() => {
         path: app.getPath('exe')
     });
 
-    createWindow();
-    
-    // We create the tray immediately
-    try {
+    const config = loadUserConfig();
+    const hasKey = !!config.tally_agent_key;
+
+    // If we have a key, start hidden. If not, start visible.
+    createWindow(!hasKey);
+
+    if (hasKey) {
+        initAgent(config);
+        agent.start();
         createTray();
-    } catch (e) {
-        console.log("Tray creation failed.");
-    }
+    } 
+});
 
-    // Agent Events -> IPC
-    agent.on('log', (logData) => {
-        if (mainWindow) {
-            mainWindow.webContents.send('agent-log', logData);
-        }
-    });
+// IPC: Save Config from Setup Screen
+ipcMain.handle('save-setup-config', async (_event, key) => {
+    if (!key) return false;
+    
+    // Save to disk
+    const newConfig = saveUserConfig({ tally_agent_key: key });
+    if (!newConfig) return false;
 
-    agent.on('connection-status', (status) => {
-        if (mainWindow) {
-            mainWindow.webContents.send('connection-status', status);
-        }
-    });
-
-    // Auto-start agent on app launch ALWAYS
+    // Init and Start Agent
+    initAgent(newConfig);
     agent.start();
+    createTray();
+
+    mainWindow.webContents.send('show-dashboard');
+    return true;
 });
 
 // Setup IPC handlers from UI
 ipcMain.handle('start-agent', () => {
-    agent.start();
-    return 'Running';
+    if (agent) {
+        agent.start();
+        return 'Running';
+    }
+    return 'Stopped';
 });
 
 ipcMain.handle('stop-agent', () => {
-    agent.stop();
+    if (agent) {
+        agent.stop();
+        return 'Stopped';
+    }
     return 'Stopped';
 });
 
 ipcMain.handle('get-companies', async () => {
     if (!agent) return [];
-    // If agent is not running (polling), we can still fetch companies if Tally is open
-    // Ideally we might need to "ping" tally. usage of specific agent method.
     return await agent.getCompanies();
 });
 
@@ -195,7 +254,7 @@ ipcMain.handle('get-current-company', () => {
 });
 
 ipcMain.handle('get-status', () => {
-    return agent.isRunning ? 'Running' : 'Stopped';
+    return (agent && agent.isRunning) ? 'Running' : 'Stopped';
 });
 
 // Prevent multiple instances

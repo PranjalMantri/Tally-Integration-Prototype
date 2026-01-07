@@ -9,6 +9,46 @@ const connBackend = document.getElementById('conn-backend');
 const companySelect = document.getElementById('company-select');
 const btnRefreshCompanies = document.getElementById('btn-refresh-companies');
 
+const setupView = document.getElementById('setup-view');
+const dashboardView = document.getElementById('dashboard-view');
+const inputAgentKey = document.getElementById('input-agent-key');
+const btnSaveKey = document.getElementById('btn-save-key');
+const setupError = document.getElementById('setup-error');
+
+// --- View Switching Logic ---
+window.electronAPI.onShowSetup(() => {
+    setupView.style.display = 'block';
+    dashboardView.style.display = 'none';
+});
+
+window.electronAPI.onShowDashboard(() => {
+    setupView.style.display = 'none';
+    dashboardView.style.display = 'block';
+    
+    updateStatusUI('Running');
+    loadCompanies();
+});
+
+btnSaveKey.addEventListener('click', async () => {
+    const key = inputAgentKey.value.trim();
+    if (!key) {
+        setupError.textContent = "Please enter a valid key.";
+        setupError.style.display = 'block';
+        return;
+    }
+    setupError.style.display = 'none';
+    btnSaveKey.disabled = true;
+    btnSaveKey.textContent = "Saving...";
+
+    const success = await window.electronAPI.saveConfig(key);
+    if (!success) {
+        setupError.textContent = "Failed to save configuration.";
+        setupError.style.display = 'block';
+        btnSaveKey.disabled = false;
+        btnSaveKey.textContent = "Save & Start Agent";
+    }
+});
+
 function updateStatusUI(status) {
     statusBadge.textContent = status;
     statusBadge.className = 'status-badge ' + status.toLowerCase();

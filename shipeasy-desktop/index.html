@@ -6,7 +6,21 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
+    <!-- Setup View -->
+    <div class="container" id="setup-view" style="display: none;">
+        <header>
+            <h1>ShipEasy Setup</h1>
+        </header>
+        <div class="setup-content" style="padding: 20px; text-align: center;">
+            <p style="margin-bottom: 15px;">Please enter your Tally Agent Key to get started.</p>
+            <input type="text" id="input-agent-key" placeholder="Enter Agent Key (e.g. sk_...)" style="width: 100%; padding: 10px; margin-bottom: 15px; box-sizing: border-box;">
+            <button id="btn-save-key" class="btn primary" style="width: 100%;">Save & Start Agent</button>
+            <p id="setup-error" style="color: red; display: none; margin-top: 10px;"></p>
+        </div>
+    </div>
+
+    <!-- Dashboard View -->
+    <div class="container" id="dashboard-view" style="display: none;">
         <header>
             <h1>ShipEasy Agent</h1>
             <div class="status-group">
