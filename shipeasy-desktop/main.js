@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Import the Agent Class
-const TallyAgent = require(path.join(__dirname, '../shipeasy-agent/agent.js'));
+const TallyAgent = require(path.join(__dirname, './agent.js'));
 
 let mainWindow;
 let tray;
@@ -20,7 +20,7 @@ function loadUserConfig() {
             const data = fs.readFileSync(CONFIG_PATH, 'utf8');
             return JSON.parse(data);
         }
-        const localConfigPath = path.join(__dirname, '../shipeasy-agent/config.json');
+        const localConfigPath = path.join(__dirname, './config.json');
         if (fs.existsSync(localConfigPath)) {
             const data = fs.readFileSync(localConfigPath, 'utf8');
             return JSON.parse(data);
