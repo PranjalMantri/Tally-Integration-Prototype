@@ -1,65 +1,15 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain } = require('electron');
 const path = require('path');
-const fs = require('fs');
 
 // Import the Agent Class
-const TallyAgent = require(path.join(__dirname, './agent.js'));
+const TallyAgent = require(path.join(__dirname, '../services/tally-agent.js'));
 
 let mainWindow;
 let tray;
 let agent;
 let isQuitting = false;
 
-const USER_DATA_PATH = app.getPath('userData');
-const CONFIG_PATH = path.join(USER_DATA_PATH, 'config.json');
-const STATE_PATH = path.join(USER_DATA_PATH, 'app-state.json');
-
-function loadUserConfig() {
-    try {
-        if (fs.existsSync(CONFIG_PATH)) {
-            const data = fs.readFileSync(CONFIG_PATH, 'utf8');
-            return JSON.parse(data);
-        }
-        const localConfigPath = path.join(__dirname, './config.json');
-        if (fs.existsSync(localConfigPath)) {
-            const data = fs.readFileSync(localConfigPath, 'utf8');
-            return JSON.parse(data);
-        }
-    } catch (e) {
-        console.error("Failed to load config:", e);
-    }
-    return {};
-}
-
-function saveUserConfig(newConfig) {
-    try {
-        const current = loadUserConfig();
-        const updated = { ...current, ...newConfig };
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2));
-        return updated;
-    } catch (e) {
-        console.error("Failed to save config:", e);
-        return null;
-    }
-}
-
-function loadState() {
-    try {
-        if (fs.existsSync(STATE_PATH)) {
-            return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
-        }
-    } catch (e) { console.error("Failed to load state", e); }
-    return {};
-}
-
-function saveSelectedCompany(companyName) {
-    if (!companyName || companyName === "No Companies Found (Is Tally Open?)") return;
-    try {
-        const state = loadState();
-        state.selectedCompany = companyName;
-        fs.writeFileSync(STATE_PATH, JSON.stringify(state));
-    } catch(e) { console.error("Failed to save state", e); }
-}
+const { loadUserConfig, saveUserConfig, loadState, saveSelectedCompany } = require('./config/config-manager.js');
 
 function initAgent(config) {
     if (agent) {
@@ -102,14 +52,14 @@ function createWindow(show = false) {
         height: 600,
         show: show, 
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: path.join(__dirname, '../preload/index.js'),
             nodeIntegration: false,
             contextIsolation: true
         },
-        icon: path.join(__dirname, 'assets/icon.png')
+        icon: path.join(__dirname, '../assets/icon.png')
     });
 
-    mainWindow.loadFile('index.html');
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
     mainWindow.once('ready-to-show', () => {
          // Determine which view to show
@@ -136,7 +86,7 @@ function createWindow(show = false) {
 function createTray() {
     if (tray) return;
 
-    const iconPath = path.join(__dirname, 'assets/icon.png');
+    const iconPath = path.join(__dirname, '../assets/icon.png');
     tray = new Tray(iconPath);
     tray.setToolTip('ShipEasy Tally Agent');
 
