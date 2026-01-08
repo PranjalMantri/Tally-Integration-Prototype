@@ -84,6 +84,15 @@ function initAgent(config) {
         if (mainWindow) mainWindow.webContents.send('connection-status', status);
     });
 
+    agent.on('companies-updated', (companies) => {
+        if (mainWindow) mainWindow.webContents.send('companies-updated', companies);
+    });
+
+    agent.on('company-changed', (newCompany) => {
+        saveSelectedCompany(newCompany);
+        if (mainWindow) mainWindow.webContents.send('company-selection-changed', newCompany);
+    });
+
     return agent;
 }
 

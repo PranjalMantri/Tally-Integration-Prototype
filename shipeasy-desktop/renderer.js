@@ -8,7 +8,6 @@ const connBackend = document.getElementById('conn-backend');
 const btnClearLogs = document.getElementById('btn-clear-logs');
 // New Elements
 const companySelect = document.getElementById('company-select');
-const btnRefreshCompanies = document.getElementById('btn-refresh-companies');
 
 const setupView = document.getElementById('setup-view');
 const dashboardView = document.getElementById('dashboard-view');
@@ -147,24 +146,31 @@ async function loadCompanies() {
         companySelect.disabled = true;
         companySelect.innerHTML = '<option>Loading...</option>';
         
-        const companies = await window.electronAPI.getCompanies();
-        const current = await window.electronAPI.getCurrentCompany();
+        let companies = [];
+        try {
+            companies = await window.electronAPI.getCompanies();
+        } catch (err) {
+            console.error("Failed to fetch companies:", err);
+        }
+
+        let current = '';
+        try {
+            current = await window.electronAPI.getCurrentCompany();
+        } catch (err) {
+            console.error("Failed to fetch current company:", err);
+        }
         
         companySelect.innerHTML = '';
         
-        if (companies.length === 0) {
+        if (!Array.isArray(companies) || companies.length === 0) {
             const opt = document.createElement('option');
             opt.text = "No Companies Found (Is Tally Open?)";
-            opt.value = ""; // Empty value to prevent selection
+            opt.value = ""; 
             companySelect.appendChild(opt);
             
-            if (current && current !== "No Companies Found (Is Tally Open?)") {
-                const curOpt = document.createElement('option');
-                curOpt.value = current;
-                curOpt.text = `${current} (Configured)`;
-                curOpt.selected = true;
-                companySelect.appendChild(curOpt);
-            }
+            // Keep disabled if no companies
+            companySelect.disabled = true;
+
         } else {
             companies.forEach(comp => {
                 const opt = document.createElement('option');
@@ -173,13 +179,14 @@ async function loadCompanies() {
                 if (comp === current) opt.selected = true;
                 companySelect.appendChild(opt);
             });
+            // Enable only if companies exist
+            companySelect.disabled = false;
         }
     } catch (e) {
         console.error("Error loading companies", e);
         companySelect.innerHTML = '<option>Error loading companies</option>';
-    } finally {
-        companySelect.disabled = false;
-    }
+        companySelect.disabled = true;
+    } 
 }
 
 // Initial Status Check
@@ -203,8 +210,6 @@ companySelect.addEventListener('change', async (e) => {
     }
 });
 
-btnRefreshCompanies.addEventListener('click', loadCompanies);
-
 btnStart.addEventListener('click', async () => {
     const newStatus = await window.electronAPI.startAgent();
     updateStatusUI(newStatus);
@@ -218,6 +223,16 @@ btnStop.addEventListener('click', async () => {
 // Listen for updates from Main
 window.electronAPI.onStatus((status) => {
     updateStatusUI(status);
+});
+
+window.electronAPI.onCompaniesUpdated((companies) => {
+    loadCompanies();
+});
+
+window.electronAPI.onCompanySelectionChanged((newCompany) => {
+    if (companySelect) {
+        companySelect.value = newCompany;
+    }
 });
 
 window.electronAPI.onLog((logData) => {

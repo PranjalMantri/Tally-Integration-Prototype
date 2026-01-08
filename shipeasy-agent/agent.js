@@ -204,11 +204,13 @@ class TallyAgent extends EventEmitter {
         this.parser = new xml2js.Parser({ explicitArray: false });
         this.isRunning = false;
         this.pollInterval = null;
+        this.lastCompanies = [];
     }
 
     start() {
         if (this.isRunning) return;
         this.isRunning = true;
+        this.lastCompanies = [];
         
         this.emitLog('info', 'Agent service started.');
         this.emitLog('info', `Targeting Tally Company: ${this.company}`);
@@ -248,15 +250,27 @@ class TallyAgent extends EventEmitter {
                 return;
             }
 
-            if (!this.company) {
-                const companies = await this.getCompanies();
-                if (companies && companies.length > 0) {
-                    this.company = companies[0];
-                    this.emitLog('info', `No company configured. Auto-selected Tally Company: ${this.company}`);
-                } else {
-                    this.emitLog('warning', "Connected to Tally, but no open companies found.");
-                    return; 
-                }
+            // Always validate company on every poll
+            const companies = await this.getCompanies();
+            
+            // Detect Change
+            const sortedCurrent = [...(companies || [])].sort();
+            const sortedLast = [...(this.lastCompanies || [])].sort();
+            if (JSON.stringify(sortedCurrent) !== JSON.stringify(sortedLast)) {
+                this.lastCompanies = sortedCurrent;
+                this.emit('companies-updated', sortedCurrent);
+                this.emitLog('info', 'Company list updated from Tally.');
+            }
+
+            if (!companies || companies.length === 0) {
+                this.emitLog('warning', "Connected to Tally, but no open companies found.");
+                return; 
+            }
+
+            if (!this.company || !companies.includes(this.company)) {
+                this.company = companies[0];
+                this.emitLog('info', `Auto-selecting active Tally Company: ${this.company}`);
+                this.emit('company-changed', this.company);
             }
 
             const response = await fetch(`${this.backendUrl}/api/sync/pending`, {
@@ -380,7 +394,6 @@ class TallyAgent extends EventEmitter {
     }
 
     async getCompanies() {
-        this.emitLog('info', 'Fetching company list from Tally...');
         try {
             const xml = TallyTemplates.listCompanies();
             const response = await this._sendRequest(xml);

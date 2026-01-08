@@ -14,5 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStatus: () => ipcRenderer.invoke('get-status'),
   getCompanies: () => ipcRenderer.invoke('get-companies'),
   setCompany: (name) => ipcRenderer.invoke('set-company', name),
-  getCurrentCompany: () => ipcRenderer.invoke('get-current-company')
+  getCurrentCompany: () => ipcRenderer.invoke('get-current-company'),
+  onCompaniesUpdated: (callback) => ipcRenderer.on('companies-updated', (_event, value) => callback(value)),
+  onCompanySelectionChanged: (callback) => ipcRenderer.on('company-selection-changed', (_event, value) => callback(value)),
 });
