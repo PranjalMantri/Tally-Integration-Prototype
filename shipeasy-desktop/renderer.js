@@ -248,12 +248,15 @@ window.electronAPI.onLog((logData) => {
         <span class="time">[${timeStr}]</span>
         <span class="${typeClass}">[${logData.type.toUpperCase()}]</span>
         <span class="message">${logData.message}</span>
-        ${logData.detail ? `<span class="detail">${logData.detail}</span>` : ''}
+        ${logData.detail ? `<div class="detail">${logData.detail}</div>` : ''}
     `;
 
     logList.appendChild(div);
     
-    logList.scrollTop = logList.scrollHeight;
+    // Auto-scroll to bottom of the list
+    requestAnimationFrame(() => {
+        div.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
 });
 
 // Clear Logs
