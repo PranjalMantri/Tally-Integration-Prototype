@@ -196,7 +196,7 @@ class TallyAgent extends EventEmitter {
         // Use provided config or fall back to defaults/file if needed
         // Assuming config is passed fully populated from the app
         this.tallyUrl = this.config.tally_url || "http://localhost:9000";
-        this.company = this.config.tally_company || "Test Company";
+        this.company = this.config.tally_company;
         this.backendUrl = this.config.backend_url;
         this.agentKey = this.config.tally_agent_key;
         this.pollingInterval = this.config.polling_interval || 5000;
@@ -246,6 +246,17 @@ class TallyAgent extends EventEmitter {
             if (!isTallyRunning) {
                 this.emitLog('warning', "Tally Server is not reachable. Is Tally Open?");
                 return;
+            }
+
+            if (!this.company) {
+                const companies = await this.getCompanies();
+                if (companies && companies.length > 0) {
+                    this.company = companies[0];
+                    this.emitLog('info', `No company configured. Auto-selected Tally Company: ${this.company}`);
+                } else {
+                    this.emitLog('warning', "Connected to Tally, but no open companies found.");
+                    return; 
+                }
             }
 
             const response = await fetch(`${this.backendUrl}/api/sync/pending`, {

@@ -1,6 +1,5 @@
 {
     "backend_url": "https://tally-integration-prototype.onrender.com",
     "tally_url": "http://localhost:9000",
-    "tally_company": "Test Company",
     "polling_interval": 5000
 }
