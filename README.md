@@ -5,9 +5,7 @@ This project integrates Tally with a cloud backend, allowing for automated synci
 ## Project Structure
 
 *   **shipeasy-backend**: Node.js/Express backend that queues invoices and manages agent authentication.
-*   **shipeasy-agent**: Node.js agent that runs locally, polls the backend for new invoices, and pushes them to Tally via XML.
-*   **shipeasy-desktop**: Electron desktop application that wraps the agent, providing a GUI for configuration and logs.
-*   **agent-installer**: Scripts for installing the agent as a Windows service.
+*   **shipeasy-desktop**: Electron desktop application that runs the agent, providing a GUI for configuration and logs. The source code is organized under `src/` with separate modules for `main`, `renderer`, `services`, and `config`.
 
 ## Prerequisites
 
@@ -42,7 +40,7 @@ This project integrates Tally with a cloud backend, allowing for automated synci
     ```bash
     npm start
     ```
-4.  **Important:** Check `shipeasy-agent/config.json`.
+4.  **Important:** Check `src/config/config.json`.
     *   If running the backend locally, change `backend_url` to `http://localhost:3000`.
     *   If using the cloud backend, ensure it matches your deployment URL.
 5.  In the UI, enter the **Agent Key** generated in the backend step.
@@ -59,3 +57,5 @@ This project integrates Tally with a cloud backend, allowing for automated synci
 
 *   **Tally Connection Failed**: Ensure Tally is running and the "Enable ODBC Server" option is checked in Tally configuration (usually port 9000).
 *   **Backend Connection Failed**: Check if the backend URL is correct in `config.json` and the Agent Key is valid.
+
+Pre-built app for Windows: - [Desktop App Downdload](https://synoriscoin-my.sharepoint.com/:u:/g/personal/pranjal_mantri_synoris_co_in/IQA_O0x4QZdxQKiU_8MV_re_AQFnXryMKQ-RvUl9_V6JQi4?e=yAcwVa)
