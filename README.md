@@ -29,6 +29,8 @@ This project integrates Tally with a cloud backend, allowing for automated synci
     node server.js
     ```
 
+Ideally - create a user in database with email, password and a tallyAgentKey that is your API key to be set in Desktop Agent
+
 ### 2. Desktop Agent Setup
 
 1.  Navigate to `shipeasy-desktop`.
