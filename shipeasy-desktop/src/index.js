@@ -2,7 +2,7 @@ const { app, BrowserWindow, Tray, Menu, ipcMain } = require('electron');
 const path = require('path');
 
 // Import the Agent Class
-const TallyAgent = require(path.join(__dirname, '../services/tally-agent.js'));
+const TallyAgent = require(path.join(__dirname, 'services/tally-agent.js'));
 
 let mainWindow;
 let tray;
@@ -52,14 +52,14 @@ function createWindow(show = false) {
         height: 600,
         show: show, 
         webPreferences: {
-            preload: path.join(__dirname, '../preload/index.js'),
+            preload: path.join(__dirname, 'preload/index.js'),
             nodeIntegration: false,
             contextIsolation: true
         },
-        icon: path.join(__dirname, '../assets/icon.png')
+        icon: path.join(__dirname, 'assets/icon.png')
     });
 
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
 
     mainWindow.once('ready-to-show', () => {
          // Determine which view to show
@@ -86,7 +86,7 @@ function createWindow(show = false) {
 function createTray() {
     if (tray) return;
 
-    const iconPath = path.join(__dirname, '../assets/icon.png');
+    const iconPath = path.join(__dirname, 'assets/icon.png');
     tray = new Tray(iconPath);
     tray.setToolTip('ShipEasy Tally Agent');
 
